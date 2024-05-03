@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy Test</title>
+    <style>
+        body {
+            /*background-color: #000;
+            color: #fff;*/
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            font-size: 11px;
+            line-height: 1.5;
+            padding: 20px;
+        }
+
+        #toolbar {
+            background-color: #EEE;
+        }
+
+        .container {
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        .tech {
+            background-color: #EEE;
+            font-family: monospace;
+            margin-right: 8px;
+        }
+
+        .result {
+            font-family: monospace;
+            font-size: 10px;
+            background-color: #3F8D57;
+            color: #FDF1AE;
+            white-space: break-spaces;
+        }
+
+        .timer {
+            background-color: #FDF1AE;
+        }
+
+        input {
+            width: 400px;
+        }
+
+        #tests {
+            display: flex;
+            flex-wrap: wrap;
+            max-width: 900px;
+        }
+
+        #tests div {
+            flex: 1 1 auto; /* Let items grow equally to fill the space */
+            max-width: 400px; /* Set a maximum width for each item */
+            min-width: 400px;
+            margin: 2px; /* Add margin between items */
+        }
+        
+        textarea {
+            width: 400px;
+            height: 120px;
+        }
+
+        .fail {
+            background-color: darkred;
+        }
+
+
+        .input-container {
+            display: flex;
+        }
+
+        .input-container input[type="text"] {
+            background-color: transparent;
+            border: none;
+            color: #ddd;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            flex-grow: 1;
+        }
+
+        .input-container button {
+            background-color: #444;
+            color: #ddd;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .output {
+            margin-top: 10px;
+        }
+
+        .command {
+            color: #0f0; /* Green */
+        }
+
+        .response {
+            color: #ddd; /* White */
+        }
+
+        .error {
+            color: #f00; /* Red */
+        }
+
+        .highlight {
+            background-color: #FDF1AE;
+            margin: 0px;
+        }
+
+
+    </style>
+    <script type="text/javascript" src="/lib/atest.class.js"></script>
+</head>
+<body>
+    <h1>GeoTesting (proxy)</h1>
+    <div id="toolbar">Display <a href="javascript:void(showPane('tests'))">test list</a> | <a href="javascript:void(showPane('newTest'))">add test</a> | <a href="javascript:void(showPane('sql'))">custom sql</a></div>
+    <div id="pane_tests">
+        <h2>Variables</h2>
+        <div id="variables"></div>
+        <h2>Tests</h2>
+        <div id="tests"></div>
+    </div>
+    <div id="pane_newTest" style="display:none">
+        <h2>Create new test</h2>
+        <form id="newTestForm">
+            <label for="name">Name:</label><br>
+            <input type="text" id="name" name="name"><br>
+            <label for="url">URL:</label><br>
+            <input type="text" id="url" name="url"><br>
+            <label for="method">Method:</label><br>
+            <select id="method" name="method">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+            </select><br>
+            <label for="headers">Headers:</label><br>
+            <textarea id="headers" name="headers"></textarea><br>
+            <label for="cookies">Cookies:</label><br>
+            <textarea id="cookies" name="cookies"></textarea><br>
+            <label for="data">Data:</label><br>
+            <textarea id="data" name="data"></textarea><br>
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+    <div id="pane_editTest" style="display:none">
+        <h2>Edit test</h2>
+        <form id="editTestForm">
+            <input type="hidden" id="edit_id" name="id" />
+            <label for="name">Name:</label><br>
+            <input type="text" id="edit_name" name="name"><br>
+            <label for="url">URL:</label><br>
+            <textarea type="text" id="edit_url" name="url"></textarea><br>
+            <label for="method">Method:</label><br>
+            <select id="edit_method" name="method">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+            </select><br>
+            <label for="headers">Headers:</label><br>
+            <textarea id="edit_headers" name="headers"></textarea><br>
+            <label for="headers">Cookies:</label><br>
+            <textarea id="edit_cookies" name="cookies"></textarea><br>
+            <label for="data">Data:</label><br>
+            <textarea id="edit_data" name="data"></textarea><br>
+            <label for="metadata">Meta:</label><br>
+            <textarea id="edit_metadata" name="metadata"></textarea><br>
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+    <div id="pane_editVar" style="display:none">
+        <h2>Edit variable</h2>
+        <form id="editVarForm">
+            <label for="var_name">Name:</label><br>
+            <input type="text" id="var_name" name="var_name"><br>
+            <label for="var_value">Value:</label><br>
+            <input type="text" id="var_value" name="var_value"><br>
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+    <script>
+        let variables = [];
+        let tests = [];
+
+        // Load tests on document load
+        document.addEventListener('DOMContentLoaded', async function() {
+            const response = await fetch('/tests');
+            testsRes = await response.json();
+            const testsDiv = document.getElementById('tests');
+
+            tests = [];
+
+            testsRes.forEach(test => {
+                
+                tests.push(new ATest(test));
+                
+                const testDiv = document.createElement('div');
+                testDiv.classList.add("container");
+                testDiv.id = 'div_' + test.id;
+                url = highlightVariables(test.url);
+
+                testDiv.innerHTML = `<span class="tech">[${test.id}]</span><b>${test.name}</b> (${test.method}) 
+                [<a href="javascript:void(executeTest(${test.id}))">RUN</a>] 
+                [<a href="javascript:void(editTest(${test.id}))">EDIT</a>]
+                <span id="res_timer_${test.id}" class="timer">&nbsp;</span>
+                <br>
+                                    URL: ${shortUrl(url)}<br>
+                                    <!-- Headers: ${test.headers}<br>
+                                    Data: ${test.data}<br><br>-->
+                <div id="res_${test.id}" class="result"></div>
+                <div id="res_raw_${test.id}" class="result" style="display:none"></div>`;
+                testsDiv.appendChild(testDiv);
+            });
+        });
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            const response = await fetch('/variables');
+            const vars = await response.json();
+            const varsDiv = document.getElementById('variables');
+
+            vars.forEach(vVar => {
+                const vVarDiv = document.createElement('div');
+                vVarDiv.classList.add("container");
+                vVarDiv.innerHTML = `<b>${vVar.name}</b> ${vVar.value} [<a href="javascript:void(editVar('${vVar.name}'))">EDIT</a>]`;
+                variables.push({key: vVar.name, value: vVar.value});
+
+                varsDiv.appendChild(vVarDiv);
+            });
+        });
+
+        function hideAllPanes() {
+            panes = new Array('tests', 'newTest', 'sql', 'editTest', 'editVar');
+            for(let i = 0; i < panes.length; i++) {
+                document.getElementById('pane_' + panes[i]).style.display = 'none';
+            }
+        }
+
+        function showPane(pane) {
+            hideAllPanes();
+            document.getElementById('pane_' + pane).style.display = 'block';
+        }
+
+        function shortUrl(url) {
+            uEl = url.split('?');
+            return uEl[0];
+        }
+
+        function updateVariable(name, value) {
+            const selVar = variables.find(vari => vari.key == name);
+            selVar.value = value;
+            //
+            // TODO: not right now, messy html
+            //
+        }
+
+        function replaceFromVariables(string) {
+            variables.forEach(vVar => {
+                if(vVar.key != null)
+                    string = string.replaceAll('{' + vVar.key.toUpperCase() + '}', vVar.value);
+            });
+            return string;
+        }
+
+        function getTestById(id) {
+            for(let i = 0; i < tests.length; i++) {
+                if(tests[i].id == id)
+                    return tests[i];
+            }
+
+            return null;
+        }
+
+        function editTest(id) {
+            showPane('editTest');
+
+            test = getTestById(id);
+
+            if(test) {
+                document.getElementById('edit_id').value = id;
+                document.getElementById('edit_name').value = test.name;
+                document.getElementById('edit_url').value = test.url;
+                document.getElementById('edit_method').value = test.method;
+                document.getElementById('edit_headers').value = test.headers;
+                document.getElementById('edit_cookies').value = test.cookies;
+                document.getElementById('edit_data').value = test.data;
+                document.getElementById('edit_metadata').value = test.metadata;
+            }
+            else {
+                console.log('test ' + id + ' not found')
+            }
+        }
+
+        function editVar(key) {
+            showPane('editVar');
+
+            document.getElementById('var_name').value = key;
+            const selVar = variables.find(vari => vari.key == key);
+            document.getElementById('var_value').value = selVar.value;
+        }
+
+        function highlightVariables(string) {
+            const regex = /{([^}]+)}/g;
+
+            string = string.replaceAll(regex, '<span class="highlight">{$1}</span>');
+            return string;
+        }
+
+        // Submit new test
+        document.getElementById('newTestForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const jsonData = {};
+            formData.forEach((value, key) => {
+                jsonData[key] = value;
+            });
+
+            try {
+                const response = await fetch('/tests', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(jsonData)
+                });
+                const result = await response.json();
+                alert(result.message);
+                //location.reload(); // Reload the page to update the tests list
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('editTestForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            console.log(formData);
+            const jsonData = {};
+            formData.forEach((value, key) => {
+                jsonData[key] = value;
+            });
+
+            try {
+                const response = await fetch('/tests/' + jsonData['id'], {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(jsonData)
+                });
+                const result = await response.json();
+                console.log(result.message);
+                location.reload(); // Reload the page to update the tests list
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+        
+
+        // Function to delete a test based on its ID
+        async function deleteTest(testId) {
+            try {
+                const response = await fetch(`/tests/${testId}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    // Reload tests after successful deletion
+                    loadTests();
+                } else {
+                    console.error('Failed to delete test:', response.statusText);
+                    alert('Failed to delete test. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error deleting test:', error);
+                alert('An error occurred while deleting the test. Please try again.');
+            }
+        }
+
+        document.getElementById('editVarForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            //const formData = new FormData(event.target);
+            //console.log(formData['var_name'] + ' = ' + formData['var_value']);
+            const name = document.getElementById('var_name').value;
+            const valu = document.getElementById('var_value').value;
+
+            updateOrInsertVariable(name, valu);
+        });
+
+        async function updateOrInsertVariable(name, value) {
+            try {
+                const response = await fetch(`/variables`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({'name': name, 'value': value})
+                });
+                if (response.ok) {
+                    // Reload tests after successful deletion
+                    
+                } else {
+                    console.error('Failed to update:', response.statusText);
+                    alert('Failed to update variables.');
+                }
+            } catch (error) {
+                console.error('Error updating variable:', error);
+            }
+        }
+
+        // Execute test
+        async function executeTest(id) {
+            //const response = await fetch('/tests');
+            //tests = await response.json();
+
+            const sTest = getTestById(id);
+
+            const testBody = replaceFromVariables(JSON.stringify(sTest));
+            //console.log(testBody);
+            document.getElementById('res_' + id).innerText = '...';
+            startTimer('res_timer_' + id);
+
+            document.getElementById('res_' + id).classList.remove('fail');
+
+            try {
+                //console.log(selectedTest);
+                const proxyResponse = await fetch('/proxy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: testBody
+                });
+                
+                const proxyResponseData = await proxyResponse.json();
+
+                try {
+                    stopTimer();
+
+                    if(proxyResponseData.status_code != 200)
+                        document.getElementById('res_' + id).classList.add('fail');
+
+                    jsonStr = JSON.stringify(proxyResponseData.data, null, 2);
+
+                    let assList = sTest.getAssertions();
+                    let result = "";
+
+                    for(let i = 0; i < assList.length; i++) {
+                        let ass = assList[i];
+                        let path = ass.split(' ', 2)[1];
+                        console.log(path);
+                        result += "ASSERTION, JSON " + ass + ":" + sTest.countJsonPath(path, proxyResponseData.data) + "<br/>";
+
+                    }
+
+                    document.getElementById('res_' + id).innerHTML = result;
+                    document.getElementById('res_raw_' + id).innerHTML = jsonStr;
+
+                } catch (error) {
+                    document.getElementById('res_' + id).innerText = proxyResponseData;
+                    document.getElementById('res_' + id).classList.add('fail');
+                }
+            } catch (error) {
+                //console.error('Error:', error);
+                document.getElementById('res_' + id).innerText = error;
+                document.getElementById('res_' + id).classList.add('fail');
+                //alert('An error occurred while executing the test.');
+            }
+        }
+
+        function postResults(test, jsonStr) {
+            // console.log(test.metadata);
+            //
+            // line by line for now...
+
+            let lines = jsonStr.split('\n');
+
+            for(let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+
+                // Direct link to object id's
+                line = line.replace(/(.*).OBJECTID.:\s([0-9]*),/, '$1"OBJECTID": <a target="_new" href="' + featureUrl(test.url) + '$2?f=json">OBJECTID $2<a>,')
+                
+                // Set token if found
+                const tokenRegex = /"token":\s*"([^"]+)"/;
+                // Match the token pattern in the string
+                const match = line.match(tokenRegex);
+                if (match && match[1]) {
+                    const selVar = variables.find(vari => vari.key == 'TOKEN');
+                    selVar.value = match[1];
+                }
+                                
+                lines[i] = line;
+            }
+
+            return lines.join('\n');
+        }
+
+        function featureUrl(url) {
+            ue = url.split('query');
+            url = ue[0];
+            url = replaceFromVariables(url);
+            return url;
+        }
+    </script>
+
+    <!-- Text area for custom SQL queries -->
+    <div id="pane_sql" style="display: none;">
+        <h2>Custom SQL Query</h2>
+        <textarea id="sqlQuery" rows="5" cols="50" placeholder="Enter your custom SQL query here"></textarea>
+        <button onclick="executeQuery()">Execute Query</button>
+        <div id="sqlResult" class="result"></div>
+    </div>
+    <script>
+        // Function to load tests from the backend
+        /*async function loadTests() {
+            const response = await fetch('/tests');
+            const tests = await response.json();
+            const testsDiv = document.getElementById('tests');
+            tests.forEach(test => {
+                const testDiv = document.createElement('div');
+                testDiv.innerHTML = `<b>${test.name}</b><br>
+                                     Method: ${test.method}<br>
+                                     URL: ${test.url}<br>
+                                     Headers: ${test.headers}<br>
+                                     Data: ${test.data}<br><br>`;
+                testsDiv.appendChild(testDiv);
+            });
+        }*/
+
+        // Function to execute custom SQL query
+        async function executeQuery() {
+            const sqlQuery = document.getElementById('sqlQuery').value;
+            try {
+                const response = await fetch('/custom-sql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query: sqlQuery })
+                });
+                const result = await response.json();
+                document.getElementById('sqlResult').innerText = JSON.stringify(result);
+                //console.log('Query result:', result);
+                // Handle the result as needed
+            } catch (error) {
+                console.error('Error executing SQL query:', error);
+                alert('An error occurred while executing the SQL query. Please try again.');
+            }
+        }
+
+        // Load tests when the page is loaded
+        //window.onload = loadTests;
+
+        // Declare timerInterval in a higher scope
+        let timerInterval;
+
+        // Function to start the timer
+        function startTimer(elemId) {
+            // Get the current time when the button is clicked
+            const startTime = new Date().getTime();
+
+            // Update the timer every 10 milliseconds
+            timerInterval = setInterval(() => {
+                // Calculate the elapsed time
+                const elapsedTime = new Date().getTime() - startTime;
+
+                // Convert milliseconds to seconds and milliseconds
+                const seconds = Math.floor(elapsedTime / 1000);
+                const milliseconds = elapsedTime % 1000;
+
+                // Update the timer display
+                document.getElementById(elemId).innerText = `${seconds}.${milliseconds}`;
+            }, 100); // Update the timer every 100 milliseconds
+        }
+
+        // Function to stop the timer
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+
+        // Attach event listener to the "RUN" button
+        //document.getElementById('run-button').addEventListener('click', startTimer);
+
+    </script>
+</body>
+</html>
