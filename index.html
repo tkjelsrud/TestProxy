@@ -4,126 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Proxy Test</title>
-    <style>
-        body {
-            /*background-color: #000;
-            color: #fff;*/
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-            font-size: 11px;
-            line-height: 1.5;
-            padding: 20px;
-        }
-
-        #toolbar {
-            background-color: #EEE;
-        }
-
-        .container {
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            padding: 10px;
-            overflow: hidden;
-        }
-
-        .tech {
-            background-color: #EEE;
-            font-family: monospace;
-            margin-right: 8px;
-        }
-
-        .result {
-            font-family: monospace;
-            font-size: 10px;
-            background-color: #3F8D57;
-            color: #FDF1AE;
-            white-space: break-spaces;
-        }
-
-        .timer {
-            background-color: #FDF1AE;
-        }
-
-        input {
-            width: 400px;
-        }
-
-        #tests {
-            display: flex;
-            flex-wrap: wrap;
-            max-width: 900px;
-        }
-
-        #tests div {
-            flex: 1 1 auto; /* Let items grow equally to fill the space */
-            max-width: 400px; /* Set a maximum width for each item */
-            min-width: 400px;
-            margin: 2px; /* Add margin between items */
-        }
-        
-        textarea {
-            width: 400px;
-            height: 120px;
-        }
-
-        .fail {
-            background-color: darkred;
-        }
-
-
-        .input-container {
-            display: flex;
-        }
-
-        .input-container input[type="text"] {
-            background-color: transparent;
-            border: none;
-            color: #ddd;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
-            flex-grow: 1;
-        }
-
-        .input-container button {
-            background-color: #444;
-            color: #ddd;
-            border: none;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-
-        .output {
-            margin-top: 10px;
-        }
-
-        .command {
-            color: #0f0; /* Green */
-        }
-
-        .response {
-            color: #ddd; /* White */
-        }
-
-        .error {
-            color: #f00; /* Red */
-        }
-
-        .highlight {
-            background-color: #FDF1AE;
-            margin: 0px;
-        }
-
-
-    </style>
+    <link rel="stylesheet" href="/lib/default.css"></link>
+    <script type="text/javascript" src="/lib/utils.js"></script>
     <script type="text/javascript" src="/lib/atest.class.js"></script>
 </head>
 <body>
-    <h1>GeoTesting (proxy)</h1>
-    <div id="toolbar">Display <a href="javascript:void(showPane('tests'))">test list</a> | <a href="javascript:void(showPane('newTest'))">add test</a> | <a href="javascript:void(showPane('sql'))">custom sql</a></div>
+    <div id="toolbar">GeoTesting 
+          <a href="javascript:void(showPane('tests'))">test list</a> 
+        | <a href="javascript:void(showPane('newTest'))">add test</a> 
+        | <a href="javascript:void(showPane('sql'))">custom sql</a>
+        | <a href="/analyze">analyze service</a></div>
+    <div id="content">
     <div id="pane_tests">
-        <h2>Variables</h2>
-        <div id="variables"></div>
         <h2>Tests</h2>
         <div id="tests"></div>
+        <h2>Variables</h2>
+        <div id="variables"></div>
     </div>
     <div id="pane_newTest" style="display:none">
         <h2>Create new test</h2>
@@ -180,6 +76,9 @@
             <button type="submit">Submit</button>
         </form>
     </div>
+    <div id="pane_analyze" style="display:none">
+     
+    </div>
     <script>
         let variables = [];
         let tests = [];
@@ -193,24 +92,26 @@
             tests = [];
 
             testsRes.forEach(test => {
-                
-                tests.push(new ATest(test));
+                at = new ATest(test)
+                tests.push(at);
                 
                 const testDiv = document.createElement('div');
                 testDiv.classList.add("container");
-                testDiv.id = 'div_' + test.id;
+                testDiv.id = 'div_' + at.get('id');
                 url = highlightVariables(test.url);
 
                 testDiv.innerHTML = `<span class="tech">[${test.id}]</span><b>${test.name}</b> (${test.method}) 
                 [<a href="javascript:void(executeTest(${test.id}))">RUN</a>] 
                 [<a href="javascript:void(editTest(${test.id}))">EDIT</a>]
+                [<a href="/t/${test.id}" target="_blank">&#x26F6;</a>]
                 <span id="res_timer_${test.id}" class="timer">&nbsp;</span>
                 <br>
-                                    URL: ${shortUrl(url)}<br>
+                                    <span class="subdued">${shortUrl(url)}</span><br>
                                     <!-- Headers: ${test.headers}<br>
                                     Data: ${test.data}<br><br>-->
                 <div id="res_${test.id}" class="result"></div>
                 <div id="res_raw_${test.id}" class="result" style="display:none"></div>`;
+
                 testsDiv.appendChild(testDiv);
             });
         });
@@ -231,7 +132,7 @@
         });
 
         function hideAllPanes() {
-            panes = new Array('tests', 'newTest', 'sql', 'editTest', 'editVar');
+            panes = new Array('tests', 'newTest', 'sql', 'editTest', 'editVar', 'analyze');
             for(let i = 0; i < panes.length; i++) {
                 document.getElementById('pane_' + panes[i]).style.display = 'none';
             }
@@ -300,12 +201,7 @@
             document.getElementById('var_value').value = selVar.value;
         }
 
-        function highlightVariables(string) {
-            const regex = /{([^}]+)}/g;
 
-            string = string.replaceAll(regex, '<span class="highlight">{$1}</span>');
-            return string;
-        }
 
         // Submit new test
         document.getElementById('newTestForm').addEventListener('submit', async function(event) {
@@ -446,16 +342,45 @@
 
                     let assList = sTest.getAssertions();
                     let result = "";
+                    let passed = true;
 
                     for(let i = 0; i < assList.length; i++) {
                         let ass = assList[i];
-                        let path = ass.split(' ', 2)[1];
-                        console.log(path);
-                        result += "ASSERTION, JSON " + ass + ":" + sTest.countJsonPath(path, proxyResponseData.data) + "<br/>";
+                        let arg = ass.split(' ', 2);
+                        
+                        if(arg[0] == "JSON") {
+                            result += "ASSERTION, JSON " + arg[0] + ":" + sTest.countJsonPath(arg[1], proxyResponseData.data) + "<br/>";
+                        }
+                        if(arg[0] == "JSON.TS") {
+                            let ts = new Date(sTest.findJsonKey(arg[1], proxyResponseData.data));
 
+                            result += "ASSERTION, JSON.TS " + arg[0] + ":" + ts.toLocaleString() + "<br/>";
+                        }
+                        if(arg[0] == "ASSERT") {
+                            let assVal = sTest.findJsonKey(arg[1], proxyResponseData.data);
+                            if(assVal == undefined || assVal == false || assVal == "" || assVal == 0)
+                                passed = false;
+
+                            result += "ASSERTION " + arg[1] + ":" + assVal + "<br/>";
+                        }
+                        if(arg[0] == "JSON.FILTER") {
+                            delete proxyResponseData.data[arg[1]];
+                            jsonStr = JSON.stringify(proxyResponseData.data, null, 2);
+                        }
+
+                        //result += "ASSERTION, JSON " + ass + ":" + sTest.countJsonPath(path, proxyResponseData.data) + "<br/>";
                     }
 
                     document.getElementById('res_' + id).innerHTML = result;
+                    if(!passed) {
+                        document.getElementById('res_' + id).classList.add('fail');
+                        //document.getElementById('div_' + id).classList.add('fail');
+                    }
+
+                    if(sTest.hasMeta('SHOWOUTPUT')) {
+                        document.getElementById('res_raw_' + id).style.display = 'block';
+                    }
+
                     document.getElementById('res_raw_' + id).innerHTML = jsonStr;
 
                 } catch (error) {
@@ -498,14 +423,8 @@
             return lines.join('\n');
         }
 
-        function featureUrl(url) {
-            ue = url.split('query');
-            url = ue[0];
-            url = replaceFromVariables(url);
-            return url;
-        }
     </script>
-
+    </div>
     <!-- Text area for custom SQL queries -->
     <div id="pane_sql" style="display: none;">
         <h2>Custom SQL Query</h2>

@@ -1,12 +1,19 @@
 from flask import Flask, g, request, jsonify, send_file, Response
 from flask_cors import CORS  # Import CORS extension
-import requests, json
+import requests, json, datetime, time
+from enum import Enum, auto
 import sqlite3
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 DATABASE = 'tests.db'
+
+class TestResult(Enum):
+    PASSED = 'PASSED'
+    FAILED = 'FAILED'
+    SKIPPED = 'SKIPPED'
+    ERROR = 'ERROR'
 
 def multiLineStringToDict(header_string):
     if header_string is None or header_string == "":
@@ -28,6 +35,8 @@ def health_check():
 @app.route('/proxy', methods=['POST'])
 def proxy():
     # Get request details from the client
+    start_time = time.time() 
+
     request_data = request.json
     url = request_data.get('url')  # URL of the target endpoint
     method = request_data.get('method', 'GET')  # Default to GET if method is not specified
@@ -49,26 +58,36 @@ def proxy():
         if method == 'POST':
             data = multiLineStringToDict(data)
             response = requests.post(url, headers=headers, cookies=cookies, data=data, timeout=20, verify=False)  # Set timeout to 10 seconds
-             
-
-        # Check if the response contains JSON data
+        
         json_response = response.json()
-        print(json_response)
-    except requests.Timeout:
-        return jsonify({'error': 'Timeout occurred while contacting the target endpoint.'}), 504
-    except requests.RequestException as e:
-        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
-    except ValueError:
-        return jsonify({'error': 'Non-JSON response from the target endpoint.'}), 500
+        duration = int((time.time() - start_time) * 1000)
+
+        store_result(request_data.get('id'), TestResult.PASSED, duration, json_response)
+
     except Exception as e:
+        duration = int((time.time() - start_time) * 1000)
+        store_result(request_data.get('id'), TestResult.ERROR, duration, str(e))
         return jsonify({'error': 'General exception: ' + str(e)}), 500
 
-    # Forward response back to the client
     return jsonify({
         'status_code': response.status_code,
         'headers': dict(response.headers),
         'data': json_response
     })
+
+def store_result(test_id, result, duration = None, payload = ""):
+    #print(str(result))
+    #print(payload)
+    with app.app_context():
+        run_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('''
+            INSERT INTO results (runDate, testId, result, duration, payload)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (run_date, test_id, result.value, duration, json.dumps(payload)))
+        db.commit()
+    return None
 
 # Create a connection to the SQLite database
 def get_db():
@@ -99,6 +118,16 @@ def init_db():
             CREATE TABLE IF NOT EXISTS variables (
                 name TEXT PRIMARY KEY NOT NULL,
                 value TEXT NOT NULL
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS results (
+                runDate DATETIME NOT NULL,
+                testId INTEGER NOT NULL,
+                result TEXT NOT NULL,
+                duration INTEGER,
+                payload TEXT,
+                UNIQUE(testId, runDate)
             );
         ''')
         db.commit()
@@ -166,6 +195,31 @@ def delete_test(test_id):
         cursor = db.cursor()
         cursor.execute('DELETE FROM tests WHERE id = ?', (test_id,))
         db.commit()
+
+@app.route('/tests/<int:test_id>', methods=['GET'])
+def get_test(test_id):
+    with app.app_context():
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('SELECT id, name, method, url, headers, cookies, data, idx, metadata FROM tests WHERE id = ?', (test_id, ))
+        test = cursor.fetchone()  # Use fetchone() since you expect only one row
+
+    if test:
+        # Create a dictionary from the row data
+        test_data = {
+            'id': test[0],
+            'name': test[1],
+            'method': test[2],
+            'url': test[3],
+            'headers': test[4],
+            'cookies': test[5],
+            'data': test[6],
+            'idx': test[7],
+            'metadata': test[8]
+        }
+        return jsonify(test_data)
+    else:
+        return jsonify({'message': 'Test not found'}), 404
 
 @app.route('/tests/<int:test_id>', methods=['POST'])
 def update_test(test_id):
@@ -253,6 +307,14 @@ def execute_custom_sql():
     except Exception as e:
         # Return error message if an exception occurs
         return jsonify({'error': str(e)}), 400
+
+@app.route('/analyze')
+def analyze():
+    return send_file('analyze.html')
+
+@app.route('/t/<int:test_id>')
+def showTest(test_id):
+    return send_file('test.html')
 
 @app.route('/')
 def index():
